@@ -6,8 +6,9 @@ const routerApi = require('./routes/rutas');
 
 const app = express();
 app.use(cors());
+app.use(express.json()); // Este middleware debe ir ANTES de las rutas para que req.body funcione.
+
 routerApi(app);
-app.use(express.json());
 
 app.get("/", (req, res) => {
     res.send("Hola desde server express");
