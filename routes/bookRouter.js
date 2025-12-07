@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const BookService = require("../services/bookService");
+const upload = require('../config/multerConfig'); 
 
 router.get("/", async (req, res) => {
     try {
@@ -33,16 +34,19 @@ router.get("/:id_libro", async (req, res) => {
     }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", upload.single('imagen'), async (req, res) => {
     try {
-        const libroCreado = await BookService.create(req.body);
+        console.log(req.file); 
+        console.log(req.body); 
+        const data = req.body;
+        if (req.file) {
+            data.imagen = req.file.filename; 
+        }
+
+        const libroCreado = await BookService.create(data);
         res.status(201).json(libroCreado);
-    } catch (error) {       
-        console.error(error);
-        res.status(500).json({
-            mensaje: "Error al crear el libro",
-            details: error.error
-        }); 
+    } catch (error) {
+        // ... manejo de errores
     }
 });
 
