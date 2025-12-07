@@ -18,7 +18,7 @@ class ReservacionService {
                 usuarios u ON r.id_usuario = u.id_usuario
             JOIN
                 libros l ON r.id_libro = l.id_libro
-            ORDER BY r.fecha_reservacion DESC;
+            ORDER BY r.id_reservacion;
         `;
         return new Promise((resolve, reject) => {
             db.query(sql, (err, result) => {
@@ -47,38 +47,37 @@ class ReservacionService {
 
     async create(reservacionData) {
         const { id_usuario, id_libro, fecha_limite } = reservacionData;
-
         return new Promise((resolve, reject) => {
-            db.getConnection((err, connection) => {
-                if (err) return reject({ error: "Error de conexión a la BD", details: err });
 
-                connection.beginTransaction(err => {
-                    if (err) {
-                        connection.release();
-                        return reject({ error: "Error al iniciar transacción", details: err });
+            // 1. Verificar si el usuario existe
+            db.query('SELECT id_usuario FROM usuarios WHERE id_usuario = ?', [id_usuario], (err, userResult) => {
+                if (err) return reject({ error: "Error al verificar el usuario", details: err });
+                if (userResult.length === 0) {
+                    return reject({ error: `El usuario con id ${id_usuario} no existe.`, status: 404 });
+                }
+
+                // 2. Verificar si el libro existe y tiene stock
+                db.query('SELECT stock FROM libros WHERE id_libro = ?', [id_libro], (err, stockResult) => {
+                    if (err) return reject({ error: "Error al consultar stock del libro", details: err });
+                    if (stockResult.length === 0) {
+                        return reject({ error: `El libro con id ${id_libro} no existe.`, status: 404 });
+                    }
+                    if (stockResult[0].stock <= 0) {
+                        return reject({ error: 'No hay stock disponible para este libro.', status: 400 });
                     }
 
-                    connection.query('SELECT stock FROM libros WHERE id_libro = ? FOR UPDATE', [id_libro], (err, stockResult) => {
-                        if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al consultar stock", details: err }); });
+                    // 3. Reducir el stock
+                    db.query('UPDATE libros SET stock = stock - 1 WHERE id_libro = ?', [id_libro], (err) => {
+                        if (err) return reject({ error: "Error al actualizar stock del libro", details: err });
 
-                        if (stockResult.length === 0 || stockResult[0].stock <= 0) {
-                            return connection.rollback(() => { connection.release(); reject({ error: 'No hay stock disponible para este libro.', status: 400 }); });
-                        }
-
-                        connection.query('UPDATE libros SET stock = stock - 1 WHERE id_libro = ?', [id_libro], (err) => {
-                            if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al actualizar stock", details: err }); });
-
-                            const insertSql = 'INSERT INTO reservaciones (id_usuario, id_libro, fecha_limite) VALUES (?, ?, ?)';
-                            connection.query(insertSql, [id_usuario, id_libro, fecha_limite], (err, insertResult) => {
-                                if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al crear la reservación", details: err }); });
-
-                                connection.commit(err => {
-                                    if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al confirmar la transacción", details: err }); });
-                                    
-                                    connection.release();
-                                    resolve({ id_reservacion: insertResult.insertId, ...reservacionData });
-                                });
-                            });
+                        // 4. Crear la reservación
+                        const insertSql = 'INSERT INTO reservaciones (id_usuario, id_libro, fecha_limite) VALUES (?, ?, ?)';
+                        db.query(insertSql, [id_usuario, id_libro, fecha_limite], (err, insertResult) => {
+                            if (err) {
+                                db.query('UPDATE libros SET stock = stock + 1 WHERE id_libro = ?', [id_libro]); // Intento de revertir
+                                return reject({ error: "Error al crear la reservación", details: err });
+                            }
+                            resolve({ id_reservacion: insertResult.insertId, ...reservacionData });
                         });
                     });
                 });
@@ -96,78 +95,63 @@ class ReservacionService {
         }
 
         return new Promise((resolve, reject) => {
-            db.getConnection((err, connection) => {
-                if (err) return reject({ error: "Error de conexión a la BD", details: err });
+            // 1. Obtener estado actual y id_libro
+            db.query('SELECT estado, id_libro FROM reservaciones WHERE id_reservacion = ?', [id_reservacion], (err, current) => {
+                if (err) return reject({ error: "Error al consultar la reservación", details: err });
+                if (current.length === 0) return reject({ error: "Reservación no encontrada", status: 404 });
 
-                connection.beginTransaction(err => {
-                    if (err) { connection.release(); return reject({ error: "Error al iniciar transacción", details: err }); }
+                const { estado: estado_actual, id_libro } = current[0];
 
-                    connection.query('SELECT estado, id_libro FROM reservaciones WHERE id_reservacion = ? FOR UPDATE', [id_reservacion], (err, current) => {
-                        if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al consultar la reservación", details: err }); });
-                        if (current.length === 0) return connection.rollback(() => { connection.release(); reject({ error: "Reservación no encontrada", status: 404 }); });
-
-                        const { estado: estado_actual, id_libro } = current[0];
-
-                        const doUpdate = () => {
-                            connection.query('UPDATE reservaciones SET estado = ? WHERE id_reservacion = ?', [estado, id_reservacion], (err) => {
-                                if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al actualizar la reservación", details: err }); });
-                                
-                                connection.commit(err => {
-                                    if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al confirmar la transacción", details: err }); });
-                                    connection.release();
-                                    this.getById(id_reservacion).then(resolve).catch(reject);
-                                });
-                            });
-                        };
-
-                        if (estado_actual === 'pendiente' && estado === 'cancelado') {
-                            connection.query('UPDATE libros SET stock = stock + 1 WHERE id_libro = ?', [id_libro], (err) => {
-                                if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al devolver stock", details: err }); });
-                                doUpdate();
-                            });
-                        } else {
-                            doUpdate();
-                        }
+                const doUpdate = () => {
+                    db.query('UPDATE reservaciones SET estado = ? WHERE id_reservacion = ?', [estado, id_reservacion], (err, result) => {
+                        if (err) return reject({ error: "Error al actualizar la reservación", details: err });
+                        this.getById(id_reservacion).then(resolve).catch(reject);
                     });
-                });
+                };
+
+                // 2. Si se cancela una reservación pendiente, se devuelve el stock
+                if (estado_actual === 'pendiente' && estado === 'cancelado') {
+                    db.query('UPDATE libros SET stock = stock + 1 WHERE id_libro = ?', [id_libro], (err) => {
+                        if (err) return reject({ error: "Error al devolver stock", details: err });
+                        doUpdate();
+                    });
+                } else {
+                    doUpdate();
+                }
             });
         });
     }
 
     async delete(id_reservacion) {
         return new Promise((resolve, reject) => {
-            db.getConnection((err, connection) => {
-                if (err) return reject({ error: "Error de conexión a la BD", details: err });
+            // 1. Obtener estado actual y id_libro para devolver stock si es necesario
+            db.query('SELECT estado, id_libro FROM reservaciones WHERE id_reservacion = ?', [id_reservacion], (err, current) => {
+                if (err) return reject({ error: "Error al consultar la reservación para eliminar", details: err });
 
-                connection.beginTransaction(err => {
-                    if (err) { connection.release(); return reject({ error: "Error al iniciar transacción", details: err }); }
-
-                    connection.query('SELECT estado, id_libro FROM reservaciones WHERE id_reservacion = ? FOR UPDATE', [id_reservacion], (err, current) => {
-                        if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al consultar la reservación", details: err }); });
-                        
-                        const doDelete = () => {
-                            connection.query('DELETE FROM reservaciones WHERE id_reservacion = ?', [id_reservacion], (err, result) => {
-                                if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al eliminar la reservación", details: err }); });
-                                if (result.affectedRows === 0) return connection.rollback(() => { connection.release(); reject({ error: "Reservación no encontrada para eliminar", status: 404 }); });
-                                
-                                connection.commit(err => {
-                                    if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al confirmar la transacción", details: err }); });
-                                    connection.release();
-                                    resolve({ message: "Reservación eliminada", id: id_reservacion });
-                                });
-                            });
-                        };
-
-                        if (current.length > 0 && current[0].estado === 'pendiente') {
-                            connection.query('UPDATE libros SET stock = stock + 1 WHERE id_libro = ?', [current[0].id_libro], (err) => {
-                                if (err) return connection.rollback(() => { connection.release(); reject({ error: "Error al devolver stock", details: err }); });
-                                doDelete();
-                            });
-                        } else {
-                            doDelete();
+                const doDelete = () => {
+                    db.query('DELETE FROM reservaciones WHERE id_reservacion = ?', [id_reservacion], (err, result) => {
+                        if (err) return reject({ error: "Error al eliminar la reservación", details: err });
+                        if (result.affectedRows === 0) {
+                            // Si no se eliminó nada, pero la consulta anterior devolvió algo,
+                            // es una condición de carrera. Devolvemos el stock que quitamos.
+                            if (current.length > 0 && current[0].estado === 'pendiente') {
+                                db.query('UPDATE libros SET stock = stock - 1 WHERE id_libro = ?', [current[0].id_libro]);
+                            }
+                            return reject({ error: "Reservación no encontrada para eliminar", status: 404 });
                         }
+                        resolve({ message: "Reservación eliminada", id: id_reservacion });
                     });
-                });
+                };
+
+                // 2. Si la reservación existe y está pendiente, devolver stock
+                if (current.length > 0 && current[0].estado === 'pendiente') {
+                    db.query('UPDATE libros SET stock = stock + 1 WHERE id_libro = ?', [current[0].id_libro], (err) => {
+                        if (err) return reject({ error: "Error al devolver stock al eliminar", details: err });
+                        doDelete();
+                    });
+                } else {
+                    doDelete();
+                }
             });
         });
     }

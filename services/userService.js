@@ -2,7 +2,7 @@ const db = require("../db");
 
 class UsuarioService {
     async getAll() {
-        const sql = `SELECT id_usuario, nombre, email, fecha_registro FROM usuarios ORDER BY id_usuario;`;
+        const sql = `SELECT id_usuario, nombre, email, password, fecha_registro FROM usuarios ORDER BY id_usuario;`;
         return new Promise((resolve, reject) => {
             db.query(sql, (err, result) => {
                 if (err) {
@@ -14,7 +14,7 @@ class UsuarioService {
     }
 
     async getById(id_usuario) {
-        const sql = `SELECT id_usuario, nombre, email, fecha_registro FROM usuarios WHERE id_usuario = ?`;
+        const sql = `SELECT id_usuario, nombre, email, password, fecha_registro FROM usuarios WHERE id_usuario = ?`;
         return new Promise((resolve, reject) => {
             db.query(sql, [id_usuario], (err, result) => {
                 if (err) {
