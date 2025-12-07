@@ -21,7 +21,6 @@ class BookService {
         return new Promise((resolve, reject) => {
             db.query(sql, (err, result) => {
                 if (err) {
-
                     return reject({ error: "Error al traer los datos de libros", details: err });
                 }
 
@@ -38,7 +37,10 @@ class BookService {
                     return reject({ error: "Error al consultar el libro", details: err });
                 }
     
-                resolve(result[0]); 
+                if (result.length === 0) {
+                    return reject({ error: "Libro no encontrado", status: 404 });
+                }
+                resolve(result[0]);
             });
         });
     }
@@ -57,7 +59,47 @@ class BookService {
         });
     }
 
-    
+    async update(id_libro, bookData) {
+        const fields = Object.keys(bookData);
+        if (fields.length === 0) {
+            return Promise.reject({ error: "No hay campos para actualizar", status: 400 });
+        }
+
+        const setClauses = fields.map(field => `${field} = ?`).join(', ');
+        const values = [...Object.values(bookData), id_libro];
+
+        const sql = `UPDATE libros SET ${setClauses} WHERE id_libro = ?`;
+
+        return new Promise((resolve, reject) => {
+            db.query(sql, values, (err, result) => {
+                if (err) {
+                    return reject({ error: "Error al actualizar el libro", details: err });
+                }
+                if (result.affectedRows === 0) {
+                    return reject({ error: "Libro no encontrado para actualizar", status: 404 });
+                }
+                
+                this.getById(id_libro)
+                    .then(resolve)
+                    .catch(reject);
+            });
+        });
+    }
+
+    async delete(id_libro) {
+        const sql = 'DELETE FROM libros WHERE id_libro = ?';
+        return new Promise((resolve, reject) => {
+            db.query(sql, [id_libro], (err, result) => {
+                if (err) {
+                    return reject({ error: "Error al eliminar el libro", details: err });
+                }
+                if (result.affectedRows === 0) {
+                    return reject({ error: "Libro no encontrado para eliminar", status: 404 });
+                }
+                resolve({ message: "Libro eliminado", id: id_libro });
+            });
+        });
+    }
 }
 
 module.exports = new BookService(); 

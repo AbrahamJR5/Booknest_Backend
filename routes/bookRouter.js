@@ -4,11 +4,8 @@ const BookService = require("../services/bookService");
 
 router.get("/", async (req, res) => {
     try {
-
         const libros = await BookService.getAll();
-
         res.status(200).json(libros);
-
     } catch (error) {
         console.error(error);
         res.status(500).json({
@@ -47,7 +44,40 @@ router.post("/", async (req, res) => {
             details: error.error
         }); 
     }
-})
+});
+
+router.put("/:id_libro", async (req, res) => {
+    try {
+        const { id_libro } = req.params;
+        const libroActualizado = await BookService.update(id_libro, req.body);
+        res.status(200).json(libroActualizado);
+    } catch (error) {
+        console.error(error);
+        if (error.status === 404) {
+            return res.status(404).json({ mensaje: error.error });
+        }
+        res.status(500).json({
+            details: error.error
+        });
+    }
+});
+
+router.delete("/:id_libro", async (req, res) => {
+    try {
+        const { id_libro } = req.params;
+        const resultado = await BookService.delete(id_libro);
+        res.status(200).json(resultado);
+    } catch (error) {
+        console.error(error);
+        if (error.status === 404) {
+            return res.status(404).json({ mensaje: error.error });
+        }
+        res.status(500).json({
+            mensaje: "Error al eliminar el libro",
+            details: error.error
+        });
+    }
+});
 
 
 module.exports = router;
