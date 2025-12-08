@@ -43,7 +43,7 @@ CREATE TABLE libros (
 
 INSERT INTO libros (titulo, autor, descripcion, imagen, stock, id_categoria)
 VALUES
-('El Principito', 'Antoine de Saint-Exupéry', 'Historia clásica sobre la inocencia y la amistad.', 'principito.jpg', 3, 3),
+('El Principito', 'Antoine de Saint-Exupéry', 'Historia clásica sobre la inocencia y la amistad.', 'el_principito.jpg', 3, 3),
 ('1984', 'George Orwell', 'Novela distópica sobre un régimen totalitario.', '1984.jpg', 5, 2),
 ('Cien Años de Soledad', 'Gabriel García Márquez', 'La obra maestra del realismo mágico.', 'soledad.jpg', 2, 5);
 

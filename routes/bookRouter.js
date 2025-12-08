@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const BookService = require("../services/bookService");
+const multer = require('multer');
+const path = require('path'); 
+const fs = require('fs');
 const upload = require('../config/multerConfig'); 
 
 router.get("/", async (req, res) => {
@@ -27,9 +30,12 @@ router.get("/:id_libro", async (req, res) => {
         }
     } catch (error) {
         console.error(error);
+        if (error.status === 404) {
+            return res.status(404).json({ mensaje: error.error });
+        }
         res.status(500).json({
             mensaje: "Error al obtener el libro",
-            details: error.error
+            details: error.details || error.error || "Error interno del servidor"
         });
     }
 });
