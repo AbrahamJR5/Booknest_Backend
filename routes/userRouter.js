@@ -48,6 +48,33 @@ router.post("/", async (req, res) => {
     }
 });
 
+
+
+router.post("/login", async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ mensaje: "Email y contraseña son requeridos" });
+        }
+
+        const usuario = await UsuarioService.login(email, password); 
+        res.status(200).json({
+            mensaje: "Login exitoso",
+            usuario: {
+                id_usuario: usuario.id_usuario,
+                nombre: usuario.nombre,
+                email: usuario.email,
+                tipo: usuario.tipo 
+            }
+        });
+        
+    } catch (error) {
+        console.error(error);
+        const status = error.status || 500;
+        res.status(status).json({ mensaje: error.error || "Error al iniciar sesión" });
+    }
+});
+
 router.put("/:id_usuario", async (req, res) => {
     try {
         const { id_usuario } = req.params;

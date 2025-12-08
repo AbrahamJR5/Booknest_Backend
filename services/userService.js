@@ -28,32 +28,32 @@ class UsuarioService {
         });
     }
 
-async create(usuarioData) {
-    const { nombre, email, password, claveAdmin } = usuarioData;
-    const CLAVE_ADMIN = "BOOKNESTADMIN2024";
-    let tipo = "usuario";
+    async create(usuarioData) {
+        const { nombre, email, password, claveAdmin } = usuarioData;
+        const CLAVE_ADMIN = "BOOKNESTADMIN2024";
+        let tipo = "usuario";
 
-    if (claveAdmin === CLAVE_ADMIN) {
-        tipo = "admin";
-    }
+        if (claveAdmin === CLAVE_ADMIN) {
+            tipo = "admin";
+        }
 
-    const sql = 'INSERT INTO usuarios (nombre, email, password, tipo) VALUES (?, ?, ?, ?)';
-    
-    return new Promise((resolve, reject) => {
-        db.query(sql, [nombre, email, password, tipo], (err, result) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    return reject({ error: 'El email ya está registrado.', status: 400 });
+        const sql = 'INSERT INTO usuarios (nombre, email, password, tipo) VALUES (?, ?, ?, ?)';
+
+        return new Promise((resolve, reject) => {
+            db.query(sql, [nombre, email, password, tipo], (err, result) => {
+                if (err) {
+                    if (err.code === 'ER_DUP_ENTRY') {
+                        return reject({ error: 'El email ya está registrado.', status: 400 });
+                    }
+                    return reject({ error: "Error al crear el usuario", details: err });
                 }
-                return reject({ error: "Error al crear el usuario", details: err });
-            }
 
-            const usuarioSinPassword = { id_usuario: result.insertId, nombre, email, tipo };
+                const usuarioSinPassword = { id_usuario: result.insertId, nombre, email, tipo };
 
-            resolve(usuarioSinPassword);
+                resolve(usuarioSinPassword);
+            });
         });
-    });
-}
+    }
 
 
     async update(id_usuario, usuarioData) {
@@ -95,6 +95,23 @@ async create(usuarioData) {
                     return reject({ error: "Usuario no encontrado para eliminar", status: 404 });
                 }
                 resolve({ message: "Usuario eliminado", id: id_usuario });
+            });
+        });
+    }
+
+    async login(email, password) {
+        const sql = `SELECT * FROM usuarios WHERE email = ? AND password = ?`;
+        return new Promise((resolve, reject) => {
+            db.query(sql, [email, password], (err, result) => {
+                if (err) {
+                    return reject({ error: "Error interno", details: err });
+                }
+                if (result.length === 0) {
+                    return reject({ error: "Credenciales incorrectas", status: 401 });
+                }
+        
+                const user = result[0];
+                resolve(user);
             });
         });
     }
